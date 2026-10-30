@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>NOVA Scientific Calculator</title>
+<style>
+:root{--bg:#eef2f7;--card:#fff;--ink:#14202e;--mute:#62748a;--acc:#176b66;--accx:#0f7a72;--line:#d3dce8;--out:#e6f4f1;--key:#f3f6fa;--op:#dfe8f3;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0d141e;--card:#162130;--ink:#e8eef7;--mute:#9eafc4;--acc:#21877f;--accx:#77d6c2;--line:#26364a;--out:#0b111a;--key:#1d2b3d;--op:#26384e}}
+:root[data-theme="dark"]{--bg:#0d141e;--card:#162130;--ink:#e8eef7;--mute:#9eafc4;--acc:#21877f;--accx:#77d6c2;--line:#26364a;--out:#0b111a;--key:#1d2b3d;--op:#26384e}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:560px;margin:0 auto;padding:14px}
+h1{margin:0;font-size:24px;color:var(--accx);letter-spacing:3px}
+.sub{color:var(--mute);font-size:10px;letter-spacing:1px;margin-bottom:10px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px;margin-bottom:10px}
+textarea{width:100%;font:18px ui-monospace,Consolas,monospace;background:transparent;color:var(--ink);border:0;outline:0;resize:none}
+#out{background:var(--out);color:var(--accx);font:20px ui-monospace,Consolas,monospace;border-radius:9px;padding:10px;min-height:52px;white-space:pre-wrap;word-break:break-all;text-align:right}
+#out.err{color:#e5736a;font-size:14px;text-align:left}
+button,select{font:inherit;color:var(--ink);background:var(--key);border:1px solid var(--line);border-radius:9px;padding:8px 10px;cursor:pointer}
+.row{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:8px}
+.pad{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}
+.pad button{padding:11px 0;font-size:15px;position:relative}
+.pad .f{font-size:13px}.pad .o{background:var(--op)}.pad .eq{background:var(--acc);color:#fff;font-weight:700}
+.pad .on{background:var(--accx);color:#000}
+.pad small{position:absolute;top:1px;right:4px;font-size:8px;color:var(--mute)}
+.chips{display:flex;gap:6px;flex-wrap:wrap}.chips button{font-size:12px;padding:6px 9px}
+.tabs button{font-size:12px;padding:6px 9px}.tabs .on{background:var(--acc);color:#fff}
+h2{font-size:11px;margin:0 0 8px;color:var(--mute);letter-spacing:1px;text-transform:uppercase}
+#hist div{padding:6px 2px;border-bottom:1px solid var(--line);cursor:pointer;font:13px ui-monospace,monospace}
+#hist small{display:block;color:var(--mute)}.note{color:var(--mute);font-size:12px}
+canvas{width:100%;height:auto;border-radius:8px;background:var(--out)}
+input[type=number]{width:70px;font:inherit;background:var(--key);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:6px}
+</style></head><body><main>
+<h1>NOVA</h1><div class="sub">SCIENTIFIC COMPUTING · v2 PROTOTYPE</div>
+<div class="card">
+<textarea id="in" rows="2" autocapitalize="off" autocomplete="off" spellcheck="false">2×sin(30°)+√16÷4</textarea>
+<div id="out">0</div>
+<div class="row"><select id="ang"><option value="rad">RAD</option><option value="deg">DEG</option><option value="grad">GRAD</option></select>
+<select id="disp"><option value="norm">Norm</option><option value="fix2">Fix 2</option><option value="fix4">Fix 4</option><option value="sci5">Sci 5</option><option value="eng">Eng</option></select>
+<select id="prec"><option value="0">Standard</option><option value="30">30 digits</option><option value="50">50 digits</option><option value="100">100 digits</option></select>
+<button id="cp">Copy</button></div></div>
+<div class="card"><div class="pad" id="pad"></div></div>
+<div class="card"><div class="tabs row" id="tabs" style="margin:0 0 8px"></div><div class="chips" id="chips"></div></div>
+<div class="card"><h2>Graph f(x) &nbsp;<span class="note" style="text-transform:none">uses the input line; separate with ;</span></h2>
+<canvas id="cv" width="600" height="300"></canvas>
+<div class="row"><button id="plot">Plot</button> x from <input type="number" id="x0" value="-10"> to <input type="number" id="x1" value="10"></div></div>
+<div class="card"><h2>Examples</h2><div class="chips" id="ex"></div></div>
+<div class="card"><h2>Memory &amp; variables</h2><div class="chips" id="vars"></div><div class="note" style="margin-top:6px">Store with <b>5→A</b> or <b>a=5</b>. A–F and M start at 0.</div></div>
+<div class="card"><h2>History</h2><div id="hist"><span class="note">Tap to reuse.</span></div></div>
+</main>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/12.4.1/math.min.js"></script>
+<script>
+const $=id=>document.getElementById(id);
+let m,scope={},hist=[],shift=false,hyp=false,frac=false,last;
+function norm(s){
+  s=s.replace(/([√∛])\s*([0-9.]+|[A-Za-z_]\w*)/g,(a,c,n)=>(c==='√'?'sqrt(':'cbrt(')+n+')').replace(/√/g,'sqrt').replace(/∛/g,'cbrt');
+  return s.replace(/×/g,'*').replace(/÷/g,'/').replace(/[−–]/g,'-').replace(/π/g,'pi').replace(/⁻¹/g,'^-1').replace(/²/g,'^2').replace(/³/g,'^3').replace(/°/g,'*(pi/180)');
+}
+const SP={integrate:[0],solve:[0],limit:[0],sigma:[0,1],product:[0,1],diff:[0,1],simplify:[0],rationalize:[0]};
+function quoteCalls(s){
+  const re=new RegExp('\\b('+Object.keys(SP).join('|')+')\\s*\\(','g');let out='',i=0,mt;
+  while((mt=re.exec(s))){
+    const st=mt.index+mt[0].length;let d=1,j=st,a=st,args=[];
+    for(;j<s.length;j++){const c=s[j];if(c==='('||c==='[')d++;else if(c===')'||c===']'){if(--d===0)break}else if(c===','&&d===1){args.push(s.slice(a,j));a=j+1}}
+    args.push(s.slice(a,j));
+    const q=args.map((x,k)=>SP[mt[1]].includes(k)&&!/^\s*"/.test(x)?JSON.stringify(x.trim()):x);
+    out+=s.slice(i,mt.index)+mt[1]+'('+q.join(',')+')';i=j+1;re.lastIndex=i;
+  }
+  return out+s.slice(i);
+}
+function build(keep){
+  const p=+$('prec').value,big=p>0,ang=$('ang').value;
+  m=big?math.create(math.all,{number:'BigNumber',precision:p+5}):math.create(math.all);
+  const k=ang==='deg'?m.divide(m.pi,180):ang==='grad'?m.divide(m.pi,200):1;
+  const toR=x=>m.multiply(x,k),fromR=x=>m.divide(x,k);
+  scope={};['A','B','C','D','E','F','M','ans','Ans'].forEach(n=>scope[n]=big?m.bignumber(0):0);
+  if(keep)for(const n in keep){const v=keep[n];if(typeof v==='function')continue;scope[n]=typeof v==='number'?(big?m.bignumber(v):v):(v&&v.isBigNumber?(big?m.bignumber(v.toString()):Number(v)):v)}
+  ['sin','cos','tan'].forEach(f=>scope[f]=x=>m[f](toR(x)));
+  ['asin','acos','atan'].forEach(f=>scope[f]=x=>fromR(m[f](x)));
+  scope.atan2=(y,x)=>fromR(m.atan2(y,x));
+  scope.log=(x,b)=>b===undefined?m.log10(x):m.log(x,b);scope.ln=x=>m.log(x);
+  scope.nCr=m.combinations;scope.nPr=m.permutations;scope.Abs=m.abs;
+  scope.pol=scope.Pol=(x,y)=>m.matrix([m.sqrt(m.add(m.square(x),m.square(y))),fromR(m.atan2(y,x))]);
+  scope.rec=scope.Rec=(r,t)=>m.matrix([m.multiply(r,m.cos(toR(t))),m.multiply(r,m.sin(toR(t)))]);
+  scope.polar=z=>m.matrix([m.abs(z),fromR(m.arg(z))]);
+  ['bin','oct','hex'].forEach(b=>scope[b]=x=>m.format(x,{notation:b}));
+  const ev=(c,v)=>c.evaluate({...scope,...v}),num=(c,v)=>Number(ev(c,v));
+  scope.integrate=(e,a,b)=>{a=Number(a);b=Number(b);const c=m.compile(e),n=2000,h=(b-a)/n;let s=num(c,{x:a})+num(c,{x:b});for(let i=1;i<n;i++)s+=(i%2?4:2)*num(c,{x:a+i*h});return s*h/3};
+  scope.diff=(e,v,pt)=>{const d=m.derivative(e,v);return pt===undefined?m.simplify(d):ev(d.compile(),{[v]:pt})};
+  scope.simplify=e=>m.simplify(e);scope.rationalize=e=>m.rationalize(e);
+  scope.solve=(e,g)=>{const[l,r]=e.split('=');const c=m.compile(r!==undefined?`(${l})-(${r})`:l),f=x=>num(c,{x});
+    for(const s0 of [g===undefined?1:Number(g),0.5,-1,3,-3,10,-10]){let x=s0;for(let i=0;i<200;i++){const h=1e-6*(Math.abs(x)+1),d=(f(x+h)-f(x-h))/(2*h),dx=f(x)/d;if(!isFinite(dx))break;x-=dx;if(Math.abs(dx)<1e-13*(1+Math.abs(x))&&Math.abs(f(x))<1e-8)return x}}
+    throw Error('No root found. Try solve(expr, guess), or roots(a,b,c,…) for polynomials.')};
+  scope.limit=(e,a)=>{const c=m.compile(e),a0=Number(a),v=[1e-6,1e-8].flatMap(h=>[num(c,{x:a0+h}),num(c,{x:a0-h})]);
+    if(!v.every(isFinite)||Math.max(...v)-Math.min(...v)>1e-4*(1+Math.abs(v[0])))throw Error('Limit does not exist or diverges');return(v[2]+v[3])/2};
+  const loop=(e,v,a,b,i0,op)=>{const c=m.compile(e);let s=i0;for(let i=Number(a);i<=Number(b);i++)s=op(s,ev(c,{[v]:i}));return s};
+  scope.sigma=(e,v,a,b)=>loop(e,v,a,b,0,m.add);scope.product=(e,v,a,b)=>loop(e,v,a,b,1,m.multiply);
+  const cm=(p,q)=>[p[0]*q[0]-p[1]*q[1],p[0]*q[1]+p[1]*q[0]],pw=(z,n)=>{let r=[1,0];for(let i=0;i<n;i++)r=cm(r,z);return r};
+  scope.roots=(...c)=>{c=c.map(Number);const n=c.length-1;if(n<1)throw Error('roots(a,b,c,…) needs coefficients');const a=c.map(v=>v/c[0]);let z=[...Array(n)].map((_,i)=>pw([0.4,0.9],i));
+    for(let it=0;it<500;it++)for(let i=0;i<n;i++){let P=[0,0];for(let q=0;q<=n;q++){const t=pw(z[i],n-q);P=[P[0]+a[q]*t[0],P[1]+a[q]*t[1]]}
+      let D=[1,0];for(let j=0;j<n;j++)if(j!==i)D=cm(D,[z[i][0]-z[j][0],z[i][1]-z[j][1]]);const Q=D[0]*D[0]+D[1]*D[1]||1e-300;
+      z[i]=[z[i][0]-(P[0]*D[0]+P[1]*D[1])/Q,z[i][1]-(P[1]*D[0]-P[0]*D[1])/Q]}
+    const cl=v=>Math.abs(v)<1e-10?0:+v.toPrecision(12);return m.matrix(z.map(([r,i])=>m.complex(cl(r),cl(i))))};
+  scope.simul=(A,b)=>m.flatten(m.lusolve(A,b));
+  scope.linreg=(X,Y)=>{X=m.flatten(X).toArray().map(Number);Y=m.flatten(Y).toArray().map(Number);const n=X.length,mx=X.reduce((a,b)=>a+b)/n,my=Y.reduce((a,b)=>a+b)/n;let sxy=0,sxx=0,syy=0;
+    for(let i=0;i<n;i++){sxy+=(X[i]-mx)*(Y[i]-my);sxx+=(X[i]-mx)**2;syy+=(Y[i]-my)**2}const b=sxy/sxx;return m.matrix([b,my-b*mx,sxy/Math.sqrt(sxx*syy)])};
+}
+function fracStr(f){const s=f.s<0?'-':'',n=Math.abs(f.n),d=f.d;return n>d?`${s}${Math.floor(n/d)} ${n%d}/${d}   (${s}${n}/${d})`:`${s}${n}/${d}`}
+const DISP={norm:{notation:'auto'},fix2:{notation:'fixed',precision:2},fix4:{notation:'fixed',precision:4},sci5:{notation:'exponential',precision:5},eng:{notation:'engineering',precision:8}};
+function fmt(v){
+  if(v===undefined)return '';if(typeof v==='string')return v;if(v&&v.isNode)return v.toString();
+  if(m.typeOf(v)==='ResultSet')return v.entries.map(fmt).join('\n');
+  const p=+$('prec').value,d=$('disp').value,o={...DISP[d]};if(d==='norm'||d==='eng')o.precision=p||14;
+  if(frac&&(typeof v==='number'||(v&&v.isBigNumber))){try{const x=Number(v),f=m.fraction(x);if(f.d>1&&f.d<=1e6&&Math.abs(f.s*f.n/f.d-x)<1e-9*(1+Math.abs(x)))return fracStr(f)}catch(e){}}
+  return m.format(v,o);
+}
+function run(src){
+  src=norm(src);const mt=src.match(/^(.*)→\s*([A-Za-z_]\w*)\s*$/s);if(mt)src=`${mt[2]} = (${mt[1]})`;
+  return m.evaluate(quoteCalls(src),scope);
+}
+function calc(src){
+  src=(src??$('in').value).trim();if(!src)return;const o=$('out');o.classList.remove('err');
+  try{const r=run(src);last=r;o.textContent=fmt(r);
+    const t=m.typeOf(r);if(r!==undefined&&!(r&&r.isNode)&&!['string','function','ResultSet','undefined'].includes(t))scope.ans=scope.Ans=r;
+    hist.unshift({src,s:o.textContent});hist.length=Math.min(hist.length,30);renderHist();renderVars();
+  }catch(e){o.classList.add('err');o.textContent=e.message}
+}
+function renderHist(){const h=$('hist');h.innerHTML='';hist.forEach(x=>{const d=document.createElement('div');d.textContent=x.src;const s=document.createElement('small');s.textContent='= '+x.s.split('\n')[0].slice(0,70);d.appendChild(s);d.onclick=()=>{$('in').value=x.src;calc()};h.appendChild(d)})}
+function renderVars(){const v=$('vars');v.innerHTML='';Object.keys(scope).forEach(k=>{const x=scope[k];if(typeof x==='function'||k==='Ans')return;if((typeof x==='number'&&x===0)||(x&&x.isBigNumber&&x.isZero()))return;
+  const b=document.createElement('button');let t;try{t=fmt(x)}catch(e){t='…'}b.textContent=k+' = '+t.slice(0,18);b.onclick=()=>ins(k);v.appendChild(b)});
+  if(!v.children.length)v.innerHTML='<span class="note">None set yet.</span>'}
+function ins(t){const a=$('in'),s=a.selectionStart,e=a.selectionEnd;a.value=a.value.slice(0,s)+t+a.value.slice(e);a.setSelectionRange(s+t.length,s+t.length)}
+function del(){const a=$('in'),s=a.selectionStart,e=a.selectionEnd;if(s!==e){a.value=a.value.slice(0,s)+a.value.slice(e);a.setSelectionRange(s,s)}else if(s>0){a.value=a.value.slice(0,s-1)+a.value.slice(s);a.setSelectionRange(s-1,s-1)}}
+const HYP={'sin(':'sinh(','cos(':'cosh(','tan(':'tanh(','asin(':'asinh(','acos(':'acosh(','atan(':'atanh('};
+const KEYS=[['SHIFT','@shift'],['HYP','@hyp'],['RAD','@ang'],['S⇔D','@sd'],['AC','@ac'],
+['sin','sin(','sin⁻¹','asin('],['cos','cos(','cos⁻¹','acos('],['tan','tan(','tan⁻¹','atan('],['log','log(','10ˣ','10^('],['ln','ln(','eˣ','e^('],
+['x²','^2','√','sqrt('],['x³','^3','∛','cbrt('],['xʸ','^','ʸ√','nthRoot('],['x⁻¹','^-1','x!','!'],['|x|','abs(','Ran#','random()'],
+['(','(','nPr','nPr('],[')',')','nCr','nCr('],['x','x','Pol','pol('],['π','π','Rec','rec('],['e','e','i','i'],
+['7','7'],['8','8'],['9','9'],['DEL','@del'],['M+','@m+','M−','@m-'],
+['4','4'],['5','5'],['6','6'],['×','×'],['÷','÷'],
+['1','1'],['2','2'],['3','3'],['+','+'],['−','−'],
+['0','0'],['.','.'],['×10ˣ','*10^','→','→'],['Ans','Ans','MR','M'],['=','@eq']];
+function press(k){
+  const[l,i,sl,si]=k;
+  if(i[0]==='@'){const a=shift&&si&&si[0]==='@'?si:i;
+    if(a==='@shift')shift=!shift;else if(a==='@hyp')hyp=!hyp;else if(a==='@sd'){frac=!frac;if(last!==undefined)$('out').textContent=fmt(last)}
+    else if(a==='@ang'){const s=$('ang');s.selectedIndex=(s.selectedIndex+1)%3;chg()}
+    else if(a==='@ac'){$('in').value='';$('out').textContent='0';$('out').classList.remove('err')}
+    else if(a==='@del')del();else if(a==='@eq')calc();
+    else if(a==='@m+'||a==='@m-'){scope.M=(a==='@m+'?m.add:m.subtract)(scope.M,scope.ans);renderVars()}
+    if(a!=='@shift'&&a!=='@hyp'&&a!=='@ang')shift=false;draw();return}
+  let t=shift&&si?si:i;if(hyp&&HYP[t])t=HYP[t];ins(t);shift=false;hyp=false;draw();
+}
+function draw(){const p=$('pad');p.innerHTML='';KEYS.forEach(k=>{const b=document.createElement('button');const[l,i,sl]=k;
+  b.textContent=l==='RAD'?$('ang').selectedOptions[0].textContent:(shift&&sl&&!sl.startsWith('@')?sl:l);
+  if(sl&&!shift){const s=document.createElement('small');s.textContent=sl;b.appendChild(s)}
+  if(/^[0-9.]$/.test(l))b.className='';else b.className=l==='='?'eq':(l.length<3&&'+−×÷'.includes(l))||['DEL','AC'].includes(l)?'o':'f o';
+  if((l==='SHIFT'&&shift)||(l==='HYP'&&hyp)||(l==='S⇔D'&&frac))b.classList.add('on');
+  b.onclick=()=>press(k);p.appendChild(b)})}
+const TABS={Calculus:['integrate(','diff(','limit(','sigma(','product(','solve(','simplify('],
+Stats:['mean(','median(','std(','variance(','min(','max(','sum(','mode(','linreg(','[',']',','],
+Algebra:['roots(','simul(','det(','inv(','transpose(','[[',']]','cross(','dot(','gcd(','lcm(','mod('],
+Base:['bin(','oct(','hex(','0b','0x','&','|','bitXor(','bitNot('],
+Number:['floor(','ceil(','round(','sign(','randomInt(','factorial(','log2(','exp(','conj(','re(','im(','arg(','polar(',' to '],
+Consts:['speedOfLight','gravitationalConstant','planckConstant','boltzmannConstant','avogadro','molarGasConstant','electronMass','protonMass','elementaryCharge','stefanBoltzmann','gravity','vacuumPermittivity']};
+let tab='Calculus';
+function renderTabs(){const t=$('tabs');t.innerHTML='';Object.keys(TABS).forEach(n=>{const b=document.createElement('button');b.textContent=n;if(n===tab)b.className='on';b.onclick=()=>{tab=n;renderTabs()};t.appendChild(b)});
+  const c=$('chips');c.innerHTML='';TABS[tab].forEach(x=>{const b=document.createElement('button');b.textContent=x.trim();b.onclick=()=>ins(x);c.appendChild(b)})}
+[['Add fractions','1/3+1/4'],['Degrees','sin(30°)'],['Derivative','diff(x^3*exp(x), x)'],['Integral','integrate(sin(x), 0, pi)'],['Limit','limit(sin(x)/x, 0)'],['Solve','solve(x^2=2, 1)'],['Quadratic','roots(1,2,5)'],['Simultaneous','simul([[2,1],[1,3]],[5,10])'],['Sum','sigma(k^2, k, 1, 10)'],['nCr','nCr(10,3)'],['Polar','pol(3,4)'],['Hex','hex(255)'],['Complex','sqrt(-4)+(1+2i)^2'],['Units','5 km to miles'],['c in m/s','speedOfLight']].forEach(([l,e])=>{
+  const b=document.createElement('button');b.textContent=l;b.onclick=()=>{$('in').value=e;if(l==='Add fractions'){frac=true;draw()}calc()};$('ex').appendChild(b)});
+function chg(){const keep=scope;build(keep);renderVars();draw();if(last!==undefined)try{$('out').textContent=fmt(last)}catch(e){}}
+function plot(){
+  const cv=$('cv'),g=cv.getContext('2d'),W=cv.width,H=cv.height,x0=+$('x0').value,x1=+$('x1').value,cs=getComputedStyle(document.documentElement),ink=cs.getPropertyValue('--ink'),mute=cs.getPropertyValue('--mute'),acc=cs.getPropertyValue('--accx');
+  g.clearRect(0,0,W,H);const o=$('out');o.classList.remove('err');
+  try{const series=norm($('in').value).split(';').map(s=>s.trim().replace(/^(y|f\(x\))\s*=/,'')).filter(Boolean).map(f=>{const c=m.compile(f),a=[];
+      for(let i=0;i<=W;i++){const x=x0+(x1-x0)*i/W;let y;try{y=Number(c.evaluate({...scope,x}))}catch(e){y=NaN}a.push(isFinite(y)?y:NaN)}return a});
+    const all=series.flat().filter(v=>Math.abs(v)<1e6).sort((a,b)=>a-b);if(!all.length)throw Error('Nothing to plot — enter an expression in x');
+    let lo=all[Math.floor(all.length*0.02)],hi=all[Math.floor(all.length*0.98)];if(lo===hi){lo-=1;hi+=1}const pad=(hi-lo)*0.1;lo-=pad;hi+=pad;
+    const X=i=>i,Y=y=>H-(y-lo)/(hi-lo)*H;g.strokeStyle=mute;g.lineWidth=1;g.beginPath();
+    if(lo<0&&hi>0){g.moveTo(0,Y(0));g.lineTo(W,Y(0))}if(x0<0&&x1>0){const ax=-x0/(x1-x0)*W;g.moveTo(ax,0);g.lineTo(ax,H)}g.stroke();
+    g.fillStyle=ink;g.font='18px sans-serif';g.fillText(x0,4,H-4);g.fillText(x1,W-40,H-4);g.fillText(+hi.toPrecision(3),4,18);g.fillText(+lo.toPrecision(3),4,H-24);
+    const cols=[acc,'#e5a03b','#d96c9a','#6aa8ff'];
+    series.forEach((a,si)=>{g.strokeStyle=cols[si%4];g.lineWidth=2.5;g.beginPath();let pen=false;a.forEach((y,i)=>{if(isNaN(y)||Math.abs(y)>1e6){pen=false;return}if(!pen){g.moveTo(X(i),Y(y));pen=true}else g.lineTo(X(i),Y(y))});g.stroke()});
+  }catch(e){o.classList.add('err');o.textContent=e.message}
+}
+$('plot').onclick=plot;
+$('cp').onclick=()=>{try{navigator.clipboard.writeText($('out').textContent)}catch(e){}};
+$('ang').onchange=$('prec').onchange=chg;$('disp').onchange=chg;
+$('in').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();calc()}});
+build();draw();renderTabs();renderVars();
+</script></body></html>
